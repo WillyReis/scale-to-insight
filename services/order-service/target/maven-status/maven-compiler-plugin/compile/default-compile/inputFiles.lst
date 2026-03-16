@@ -1,9 +1,0 @@
-/home/runner/work/scale-to-insight/scale-to-insight/services/order-service/src/main/java/com/scaletoinsight/order/model/Order.java
-/home/runner/work/scale-to-insight/scale-to-insight/services/order-service/src/main/java/com/scaletoinsight/order/repository/OrderRepository.java
-/home/runner/work/scale-to-insight/scale-to-insight/services/order-service/src/main/java/com/scaletoinsight/order/controller/OrderController.java
-/home/runner/work/scale-to-insight/scale-to-insight/services/order-service/src/main/java/com/scaletoinsight/order/event/OrderCreatedEvent.java
-/home/runner/work/scale-to-insight/scale-to-insight/services/order-service/src/main/java/com/scaletoinsight/order/model/OrderItem.java
-/home/runner/work/scale-to-insight/scale-to-insight/services/order-service/src/main/java/com/scaletoinsight/order/service/OrderService.java
-/home/runner/work/scale-to-insight/scale-to-insight/services/order-service/src/main/java/com/scaletoinsight/order/config/KafkaConfig.java
-/home/runner/work/scale-to-insight/scale-to-insight/services/order-service/src/main/java/com/scaletoinsight/order/OrderServiceApplication.java
-/home/runner/work/scale-to-insight/scale-to-insight/services/order-service/src/main/java/com/scaletoinsight/order/config/AwsConfig.java

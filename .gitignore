@@ -1,0 +1,22 @@
+# Maven build artifacts
+target/
+!**/src/**/target/
+
+# Eclipse / IntelliJ
+.idea/
+*.iml
+*.ipr
+*.iws
+.classpath
+.project
+.settings/
+
+# VS Code
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Spring Boot dev tools restart file
+.reloadtrigger
