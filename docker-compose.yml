@@ -1,0 +1,176 @@
+version: "3.9"
+
+services:
+  # ─── Reverse Proxy ───────────────────────────────────────────────────────────
+  nginx:
+    image: nginx:1.25-alpine
+    container_name: nginx-proxy
+    ports:
+      - "80:80"
+    volumes:
+      - ./nginx/nginx.conf:/etc/nginx/nginx.conf:ro
+    depends_on:
+      - order-service
+      - product-service
+      - analytics-service
+    networks:
+      - sti-network
+    restart: unless-stopped
+
+  # ─── Microservices ───────────────────────────────────────────────────────────
+  order-service:
+    build:
+      context: ./services/order-service
+      dockerfile: Dockerfile
+    container_name: order-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/orders_db
+      SPRING_DATASOURCE_USERNAME: sti_user
+      SPRING_DATASOURCE_PASSWORD: sti_pass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AWS_ENDPOINT_OVERRIDE: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - sti-network
+    restart: unless-stopped
+
+  product-service:
+    build:
+      context: ./services/product-service
+      dockerfile: Dockerfile
+    container_name: product-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/products_db
+      SPRING_DATASOURCE_USERNAME: sti_user
+      SPRING_DATASOURCE_PASSWORD: sti_pass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AWS_ENDPOINT_OVERRIDE: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - sti-network
+    restart: unless-stopped
+
+  analytics-service:
+    build:
+      context: ./services/analytics-service
+      dockerfile: Dockerfile
+    container_name: analytics-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:postgresql://postgres:5432/dwh_db
+      SPRING_DATASOURCE_USERNAME: sti_user
+      SPRING_DATASOURCE_PASSWORD: sti_pass
+      SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:9092
+      AWS_ENDPOINT_OVERRIDE: http://localstack:4566
+      AWS_ACCESS_KEY_ID: test
+      AWS_SECRET_ACCESS_KEY: test
+      AWS_REGION: us-east-1
+      DATALAKE_BUCKET: sti-data-lake
+    depends_on:
+      postgres:
+        condition: service_healthy
+      kafka:
+        condition: service_healthy
+      localstack:
+        condition: service_healthy
+    networks:
+      - sti-network
+    restart: unless-stopped
+
+  # ─── Databases ───────────────────────────────────────────────────────────────
+  postgres:
+    image: postgres:16-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: sti_user
+      POSTGRES_PASSWORD: sti_pass
+      POSTGRES_MULTIPLE_DATABASES: orders_db,products_db,dwh_db
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+      - ./data-warehouse/scripts/init-multiple-dbs.sh:/docker-entrypoint-initdb.d/01-init-multiple-dbs.sh
+      - ./data-warehouse/scripts/init-dwh.sql:/docker-entrypoint-initdb.d/02-init-dwh.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U sti_user -d orders_db"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    networks:
+      - sti-network
+    restart: unless-stopped
+
+  # ─── Messaging (Kafka) ───────────────────────────────────────────────────────
+  zookeeper:
+    image: confluentinc/cp-zookeeper:7.6.0
+    container_name: zookeeper
+    environment:
+      ZOOKEEPER_CLIENT_PORT: 2181
+      ZOOKEEPER_TICK_TIME: 2000
+    networks:
+      - sti-network
+    restart: unless-stopped
+
+  kafka:
+    image: confluentinc/cp-kafka:7.6.0
+    container_name: kafka
+    depends_on:
+      - zookeeper
+    environment:
+      KAFKA_BROKER_ID: 1
+      KAFKA_ZOOKEEPER_CONNECT: zookeeper:2181
+      KAFKA_ADVERTISED_LISTENERS: PLAINTEXT://kafka:9092
+      KAFKA_OFFSETS_TOPIC_REPLICATION_FACTOR: 1
+      KAFKA_AUTO_CREATE_TOPICS_ENABLE: "true"
+    healthcheck:
+      test: ["CMD", "kafka-broker-api-versions", "--bootstrap-server", "kafka:9092"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks:
+      - sti-network
+    restart: unless-stopped
+
+  # ─── LocalStack (AWS Emulation) ───────────────────────────────────────────────
+  localstack:
+    image: localstack/localstack:3.4
+    container_name: localstack
+    environment:
+      SERVICES: s3
+      DEBUG: 0
+      DEFAULT_REGION: us-east-1
+      AWS_DEFAULT_REGION: us-east-1
+    volumes:
+      - ./localstack/init-aws.sh:/etc/localstack/init/ready.d/init-aws.sh
+      - localstack-data:/var/lib/localstack
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:4566/_localstack/health"]
+      interval: 15s
+      timeout: 10s
+      retries: 10
+    networks:
+      - sti-network
+    restart: unless-stopped
+
+volumes:
+  postgres-data:
+  localstack-data:
+
+networks:
+  sti-network:
+    driver: bridge

@@ -1,0 +1,6 @@
+/home/runner/work/scale-to-insight/scale-to-insight/services/product-service/src/main/java/com/scaletoinsight/product/ProductServiceApplication.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/product-service/src/main/java/com/scaletoinsight/product/repository/ProductRepository.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/product-service/src/main/java/com/scaletoinsight/product/service/ProductService.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/product-service/src/main/java/com/scaletoinsight/product/controller/ProductController.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/product-service/src/main/java/com/scaletoinsight/product/config/AwsConfig.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/product-service/src/main/java/com/scaletoinsight/product/model/Product.java

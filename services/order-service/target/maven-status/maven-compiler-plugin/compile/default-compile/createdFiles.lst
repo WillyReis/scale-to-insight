@@ -1,0 +1,9 @@
+com/scaletoinsight/order/model/OrderItem.class
+com/scaletoinsight/order/model/Order.class
+com/scaletoinsight/order/config/KafkaConfig.class
+com/scaletoinsight/order/OrderServiceApplication.class
+com/scaletoinsight/order/repository/OrderRepository.class
+com/scaletoinsight/order/config/AwsConfig.class
+com/scaletoinsight/order/service/OrderService.class
+com/scaletoinsight/order/controller/OrderController.class
+com/scaletoinsight/order/event/OrderCreatedEvent.class

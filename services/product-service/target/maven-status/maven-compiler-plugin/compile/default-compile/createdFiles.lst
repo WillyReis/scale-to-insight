@@ -1,0 +1,6 @@
+com/scaletoinsight/product/repository/ProductRepository.class
+com/scaletoinsight/product/config/AwsConfig.class
+com/scaletoinsight/product/ProductServiceApplication.class
+com/scaletoinsight/product/controller/ProductController.class
+com/scaletoinsight/product/service/ProductService.class
+com/scaletoinsight/product/model/Product.class

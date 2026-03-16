@@ -1,0 +1,228 @@
+name: CI/CD Pipeline – Scale-to-Insight
+
+on:
+  push:
+    branches: [main, develop]
+  pull_request:
+    branches: [main]
+
+# Default to minimal permissions; individual jobs override as needed.
+permissions:
+  contents: read
+
+env:
+  REGISTRY: ghcr.io
+  IMAGE_PREFIX: ${{ github.repository_owner }}/scale-to-insight
+
+jobs:
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build & Test – Order Service
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-order-service:
+    name: Build & Test – order-service
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: services/order-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Run tests
+        run: mvn -B test
+
+      - name: Package (skip tests – already ran above)
+        run: mvn -B package -DskipTests
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: order-service-jar
+          path: services/order-service/target/*.jar
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build & Test – Product Service
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-product-service:
+    name: Build & Test – product-service
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: services/product-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Run tests
+        run: mvn -B test
+
+      - name: Package
+        run: mvn -B package -DskipTests
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: product-service-jar
+          path: services/product-service/target/*.jar
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Build & Test – Analytics Service
+  # ─────────────────────────────────────────────────────────────────────────────
+  build-analytics-service:
+    name: Build & Test – analytics-service
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    defaults:
+      run:
+        working-directory: services/analytics-service
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK 21
+        uses: actions/setup-java@v4
+        with:
+          java-version: "21"
+          distribution: temurin
+          cache: maven
+
+      - name: Run tests
+        run: mvn -B test
+
+      - name: Package
+        run: mvn -B package -DskipTests
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: analytics-service-jar
+          path: services/analytics-service/target/*.jar
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Docker Build & Push (only on push to main/develop)
+  # ─────────────────────────────────────────────────────────────────────────────
+  docker-publish:
+    name: Docker Build & Push
+    runs-on: ubuntu-latest
+    needs:
+      - build-order-service
+      - build-product-service
+      - build-analytics-service
+    if: github.event_name == 'push'
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      matrix:
+        service: [order-service, product-service, analytics-service]
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download JAR artifact
+        uses: actions/download-artifact@v4
+        with:
+          name: ${{ matrix.service }}-jar
+          path: services/${{ matrix.service }}/target/
+
+      - name: Log in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract Docker metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ env.IMAGE_PREFIX }}/${{ matrix.service }}
+          tags: |
+            type=ref,event=branch
+            type=sha,prefix=sha-
+            type=raw,value=latest,enable=${{ github.ref == 'refs/heads/main' }}
+
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v5
+        with:
+          context: services/${{ matrix.service }}
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+
+  # ─────────────────────────────────────────────────────────────────────────────
+  # Integration test with docker-compose (smoke test)
+  # ─────────────────────────────────────────────────────────────────────────────
+  integration-test:
+    name: Integration Smoke Test
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    needs:
+      - build-order-service
+      - build-product-service
+      - build-analytics-service
+    if: github.event_name == 'pull_request'
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Download all JAR artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: "*-jar"
+          merge-multiple: false
+
+      - name: Copy JARs to service target directories
+        run: |
+          mkdir -p services/order-service/target
+          mkdir -p services/product-service/target
+          mkdir -p services/analytics-service/target
+          cp order-service-jar/*.jar   services/order-service/target/   2>/dev/null || true
+          cp product-service-jar/*.jar services/product-service/target/ 2>/dev/null || true
+          cp analytics-service-jar/*.jar services/analytics-service/target/ 2>/dev/null || true
+
+      - name: Start services
+        run: docker compose up -d --build
+
+      - name: Wait for services to be healthy
+        run: |
+          sleep 60
+          docker compose ps
+
+      - name: Smoke test – Nginx health endpoint
+        run: curl -sf http://localhost/health
+
+      - name: Smoke test – Orders API
+        run: curl -sf http://localhost/api/orders/health
+
+      - name: Smoke test – Products API
+        run: curl -sf http://localhost/api/products/health
+
+      - name: Smoke test – Analytics API
+        run: curl -sf http://localhost/api/analytics/health
+
+      - name: Show logs on failure
+        if: failure()
+        run: docker compose logs
+
+      - name: Tear down
+        if: always()
+        run: docker compose down -v

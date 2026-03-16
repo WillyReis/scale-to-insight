@@ -1,0 +1,10 @@
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/repository/FactSalesRepository.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/model/FactSales.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/controller/AnalyticsController.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/model/DimDate.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/repository/DimDateRepository.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/service/SalesEtlService.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/AnalyticsServiceApplication.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/service/AnalyticsService.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/service/DataLakeService.java
+/home/runner/work/scale-to-insight/scale-to-insight/services/analytics-service/src/main/java/com/scaletoinsight/analytics/config/AwsConfig.java
