@@ -4,7 +4,7 @@ Este relatório apresenta o projeto Scale-to-Insight, desenvolvido para migrar a
 
 ## 1. Objetivo Técnico e Escopo
 
-O objetivo é implementar uma arquitetura eficiente para ingestão e análise de dados de vendas. A solução prioriza a escalabilidade e a separação de responsabilidades em microserviços. Além disso, o fluxo de dados deve ser claro e auditável, operando localmente via Docker para facilitar testes e avaliações.
+O objetivo é implementar uma arquitetura eficiente para ingestão e análise de dados de vendas. A solução prioriza a escalabilidade e a separação de responsabilidades em microserviços. Nesta versão, os serviços foram modernizados com Quarkus 3, mantendo o fluxo de dados claro e auditável e a operação local via Docker para facilitar testes e avaliações.
 
 ## 2. Requisitos Funcionais Cobertos
 
@@ -19,7 +19,7 @@ O objetivo é implementar uma arquitetura eficiente para ingestão e análise de
 ## 3. Decisões Arquiteturais e Justificativas
 
 ### 3.1 Segmentação de Serviços Baseada em Responsabilidades
-O ecossistema foi divindido em três frentes: o **Orders Service** (ingestão de pedidos), o **Finance Service** (leitura de KPIs e métricas) e o **Processor** (motor assíncrono de ETL). 
+O ecossistema foi dividido em três frentes: o **Orders Service** (ingestão de pedidos), o **Finance Service** (leitura de KPIs e métricas) e o **Processor** (motor assíncrono de ETL).
 Essa estrutura reduz o longo acoplamento entre a gravação transacional rápida da venda e os pesados cálculos analíticos, permitindo que cada área da ferramenta escale recursos de rede e memória de forma independente (Padrão CQRS).
 
 ### 3.2 Utilização do Nginx como API Gateway
@@ -28,15 +28,23 @@ Com essa decisão, o roteamento da rede interna se torna centralizado, o que fle
 
 ### 3.3 Construção de Data Lake Raw (JSONL + Emulação Azure)
 Os logs brutos (Raw) são formados e salvos localmente num formato estrito JSONL (JSON Lines) e concomitantemente submetidos como Blobs textuais para o sistema Azurite.
-A adoção do JSONL é devida à facilidade nas ações de empilhamento de fluxo contínuo (*append-only*), além de facilitar o reprocessamento seguro numa janela local. O papel ativo do Azurite é estritamente homologar o nosso uso dos SDK's da nuvem Azure, assegurando que, na ida para a Cloud paga, não serão necessários remendos no código.
+A adoção do JSONL é devida à facilidade nas ações de empilhamento de fluxo contínuo (*append-only*), além de facilitar o reprocessamento seguro numa janela local. O papel ativo do Azurite é estritamente homologar o nosso uso dos SDKs da nuvem Azure, assegurando que, na ida para a Cloud paga, não serão necessários remendos no código.
 
 ### 3.4 Processamento e Persistência em Banco (SQLite)
 A formatação estruturada do Data Warehouse e seu resumo (Data Mart) residem integrados em banco SQLite.
 Sendo uma prova prática acadêmica, a opção embutida relacional SQLite torna-se uma das atitudes mais pragmáticas e isentas de instalação. A linguagem SQL processa nativamente todas as junções exigentes espaciais e somatórias para construir o esquema estrela do modelo, embora reconheça-se facilmente que não serviria numa esteira paralela massiva (sendo as opções ideais bancos como o Snowflake ou Redshift em ambiente On Demand).
 
 ### 3.5 Evolução do Controle Baseada em Schedulers
-A rotina programada de ETL no motor processador abandonou os antigos laços repetitivos com espera de threads (`Thread.sleep`), abraçando o mecanismo oficial em Java `ScheduledExecutorService`.
-Utilizar um agendador nativo impede que a thread primária congele. Além disso, garante que eventual desligamento do Container (Ordem Docker Down) dispare um anzol no código (*Graceful Shutdown*), permitindo que a transação grave pendências e extermine o fluxo isolando o banho de dados contra prováveis corrupções na quebra seca da aplicação.
+A rotina programada de ETL no motor processador utiliza o agendador do Quarkus (`@Scheduled`), substituindo a necessidade de laços manuais com espera bloqueante.
+Esse modelo reduz complexidade operacional, evita concorrência indevida no ciclo ETL (com configuração para execução não concorrente) e mantém o processo previsível em cenários de desligamento e reinício de contêineres.
+
+### 3.6 Adoção de Quarkus nos Serviços
+A migração para Quarkus 3 trouxe padronização de desenvolvimento e operação nos três serviços.
+
+- **API REST com JAX-RS**: endpoints implementados com `@Path`, `@GET` e `@POST`.
+- **Configuração externa**: uso de `@ConfigProperty` para parâmetros de ambiente e execução.
+- **Empacotamento padronizado**: build Maven com plugin Quarkus e execução via `quarkus-run.jar`.
+- **Ciclo ETL com scheduler declarativo**: agendamento no processor por meio de propriedades, sem loop manual.
 
 ## 4. Modelagem de Dados Analítica
 
@@ -67,9 +75,9 @@ Agregador resumido exclusivo com viés para o usuário logista/diretoria:
 ## 6. Qualidade, Testabilidade e Integração (CI/CD)
 
 Como padrão da indústria, o pipeline `.github/workflows/ci-cd.yml` garante a homologação através de blocos concisos que testam todo o processo:
-- **Build Efetivo**: Cria toda a arvore da infraestrutura Docker Multistage testando se a aplicação é capaz de ser contêinerizada sadiamente sem apoio do PC do desenvolvedor.
-- **Micro Deploy Simulado**: Levanta o exército invisível ativando containers de teste (Compose Up -d) instanciando instâncias em paralelo; 
-- **Smoke Tests Completos**: Dispara POST de vendas falsas simulando um tráfego vital pelas cascatas API e, ao aguardar os timings obrigatórios, aciona um GET financeiro checando se a ponta cega de KPIs absorveu a injeção inicial do banco ETL garantindo teste assertivo do fluxo;
+- **Build Efetivo**: Compila os serviços Quarkus e valida a conteinerização completa com Docker Compose.
+- **Deploy Simulado**: sobe os contêineres em background para validar inicialização integrada do ecossistema.
+- **Smoke Tests Completos**: executa health checks, publica venda de exemplo e valida o endpoint de KPIs após o ciclo ETL.
 
 ## 7. Apontamentos e Limitações
 
@@ -95,7 +103,7 @@ flowchart LR
     O --> RAWS[(Data Lake Raw - Vendas)]
     O --> AZ[(Azure Blob Storage)]
 
-    RAWS -->|Assíncrono Offset| P[Processor ETL Schedulled]
+    RAWS -->|Assíncrono Offset| P[Processor ETL Scheduled]
     P --> DW[(SQLite Warehouse: DM/Fact)]
     DW --> DM[(Data Mart: Sales Aggregator)]
     FI -->|Consulta Dinâmica| DM
