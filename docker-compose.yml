@@ -1,4 +1,6 @@
+# Orquestração local dos serviços da plataforma Scale-to-Insight.
 services:
+  # Gateway HTTP único para expor APIs internas.
   nginx:
     image: nginx:1.27-alpine
     container_name: sti-nginx
@@ -10,6 +12,7 @@ services:
       - orders-service
       - finance-service
 
+  # Serviço de ingestão de pedidos e escrita na camada raw.
   orders-service:
     build:
       context: ./services/orders_service
@@ -23,6 +26,7 @@ services:
     depends_on:
       - azurite
 
+  # Serviço de leitura analítica dos KPIs financeiros.
   finance-service:
     build:
       context: ./services/finance_service
@@ -32,6 +36,7 @@ services:
     volumes:
       - ./data/warehouse:/data/warehouse
 
+  # Job ETL periódico que atualiza warehouse e data mart.
   processor:
     build:
       context: ./services/processor
@@ -45,6 +50,7 @@ services:
       - ./data/raw:/data/raw
       - ./data/warehouse:/data/warehouse
 
+  # Emulador local de Azure Blob Storage.
   azurite:
     image: mcr.microsoft.com/azure-storage/azurite
     container_name: sti-azurite
