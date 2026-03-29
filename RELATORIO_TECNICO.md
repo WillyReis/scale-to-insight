@@ -4,7 +4,7 @@ Este relatório apresenta o projeto Scale-to-Insight, desenvolvido para migrar a
 
 ## 1. Objetivo Técnico e Escopo
 
-O objetivo é implementar uma arquitetura eficiente para ingestão e análise de dados de vendas. A solução prioriza a escalabilidade e a separação de responsabilidades em microserviços. Nesta versão, os serviços foram modernizados com Quarkus 3, mantendo o fluxo de dados claro e auditável e a operação local via Docker para facilitar testes e avaliações.
+O objetivo é implementar uma arquitetura eficiente para ingestão e análise de dados de vendas. A solução prioriza a escalabilidade e a separação de responsabilidades em microserviços. Os serviços foram implementados com Quarkus 3, mantendo o fluxo de dados claro e auditável e a operação local via Docker para facilitar testes e avaliações.
 
 ## 2. Requisitos Funcionais Cobertos
 
