@@ -1,63 +1,93 @@
 # Scale-to-Insight
 
-Projeto final implementado em Java 21, com execucao local via Docker, para atendimento dos requisitos do enunciado.
+Ecossistema mínimo de serviços e dados para e-commerce, com ingestão de eventos, processamento analítico e exposição de KPIs financeiros em tempo quase real.
 
-## Entregaveis
+## O que este projeto entrega
 
-- Repositorio com documentacao da arquitetura.
-- Arquivo docker-compose.yml para subir o ambiente localmente.
-- Relatorio tecnico com diagrama de atores e componentes.
+- API de pedidos para gerar eventos de vendas.
+- API financeira para consulta de indicadores.
+- Gateway Nginx para entrada única de tráfego.
+- Pipeline de dados Raw -> Warehouse -> Data Mart.
+- Simulação de Azure Blob Storage com Azurite.
+- Execução local completa com Docker Compose.
+- Pipeline CI/CD com GitHub Actions.
 
-## Como Executar
+## Arquitetura (resumo)
 
-Pre-requisitos:
+1. Cliente envia requisições para o Nginx.
+2. Nginx roteia para serviços internos.
+3. Serviço de pedidos grava dados raw e publica cópia no blob.
+4. Processador ETL consolida dados no warehouse.
+5. Serviço financeiro consulta o data mart e retorna KPIs.
+
+## Stack
+
+- Java 21
+- Maven
+- Nginx
+- SQLite
+- Azurite (Azure Blob local)
+- Docker / Docker Compose
+- GitHub Actions
+
+## Executando localmente
+
+Pré-requisitos:
 
 - Docker
 - Docker Compose
 
-Passos:
+1. Subir o ambiente:
 
-1. Subir ambiente:
+```bash
+docker compose up -d --build
+```
 
-   docker compose up -d --build
+2. Verificar saúde:
 
-2. Validar gateway e servicos:
+```bash
+curl http://localhost:8080/
+curl http://localhost:8080/orders/health
+curl http://localhost:8080/finance/health
+```
 
-   curl http://localhost:8080/
-   curl http://localhost:8080/orders/health
-   curl http://localhost:8080/finance/health
+3. Publicar venda de teste:
 
-3. Gerar evento de venda e consultar data mart:
+```bash
+curl -X POST http://localhost:8080/orders/orders \
+  -H "Content-Type: application/json" \
+  -d '{"amount": 150.50, "payment_method": "pix", "status": "approved"}'
+```
 
-   curl -X POST http://localhost:8080/orders/orders \
-     -H "Content-Type: application/json" \
-     -d '{"amount": 150.50, "payment_method": "pix", "status": "approved"}'
+4. Consultar KPIs:
 
-   curl http://localhost:8080/finance/kpis
+```bash
+curl http://localhost:8080/finance/kpis
+```
 
-4. Encerrar ambiente:
+5. Encerrar:
 
-   docker compose down -v
+```bash
+docker compose down -v
+```
 
-## Atendimento ao Enunciado
+## Endpoints principais
 
-1. Camada de servicos:
-- Dois servicos conteinerizados.
-- Proxy reverso Nginx como porta de entrada.
-- Simulacao cloud com produtos Azure (Azurite).
+- `GET /orders/health`
+- `POST /orders/orders`
+- `GET /finance/health`
+- `GET /finance/kpis`
 
-2. Camada de dados:
-- Fluxo Origem (App) -> Processamento -> Destino.
-- Data Lake Raw para logs de acesso e vendas.
-- Data Warehouse com Data Mart de Performance de Vendas.
+## Estrutura do repositório
 
-3. Automacao:
-- Pipeline CI/CD com GitHub Actions para build e deploy simulado.
+- `docker-compose.yml`: orquestração local.
+- `nginx/nginx.conf`: proxy reverso.
+- `services/orders_service`: API de pedidos e ingestão raw.
+- `services/finance_service`: API de indicadores financeiros.
+- `services/processor`: ETL e atualização do data mart.
+- `.github/workflows/ci-cd.yml`: pipeline CI/CD.
 
-## Arquivos-Chave
+## Documentação complementar
 
-- docker-compose.yml
-- .github/workflows/ci-cd.yml
-- nginx/nginx.conf
-- RELATORIO_TECNICO.md
-- GUIA_APRENDIZADO_SISTEMA.md
+- `RELATORIO_TECNICO.md`: justificativas técnicas e decisões arquiteturais.
+- `GUIA_APRENDIZADO_SISTEMA.md`: tutorial de implementação e entendimento dos módulos.
