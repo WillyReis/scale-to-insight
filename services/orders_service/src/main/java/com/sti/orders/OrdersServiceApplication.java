@@ -24,51 +24,25 @@ import java.util.UUID;
 public class OrdersServiceApplication {
     private static final ObjectMapper MAPPER = new ObjectMapper();
 
-    private static final Path RAW_ROOT = Paths.get(getEnv("RAW_ROOT", "/data/raw"));
-    private static final Path ACCESS_LOG_FILE = RAW_ROOT.resolve("access/events.jsonl");
-    private static final Path SALES_LOG_FILE = RAW_ROOT.resolve("sales/events.jsonl");
+    private static final AppConfig CONFIG = AppConfig.load();
+    private static final Path ACCESS_LOG_FILE = CONFIG.rawRoot().resolve("access/events.jsonl");
+    private static final Path SALES_LOG_FILE = CONFIG.rawRoot().resolve("sales/events.jsonl");
 
-    private static final String CONNECTION_STRING = getEnv(
-        "AZURE_STORAGE_CONNECTION_STRING",
-        "DefaultEndpointsProtocol=http;" +
-            "AccountName=devstoreaccount1;" +
-            "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;" +
-            "BlobEndpoint=http://azurite:10000/devstoreaccount1;"
-    );
-    private static final String RAW_CONTAINER = getEnv("AZURE_RAW_CONTAINER", "raw");
-
+    // Inicializa o servidor HTTP e registra os endpoints do servico de pedidos.
     public static void main(String[] args) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(5001), 0);
 
         // Health endpoint usado por monitoramento e smoke tests do pipeline.
-        server.createContext("/health", exchange -> {
+        registerRoute(server, "/health", "GET", exchange -> {
             logAccess(exchange);
-            if (!"GET".equals(exchange.getRequestMethod())) {
-                sendJson(exchange, 405, Map.of("error", "method not allowed"));
-                return;
-            }
             sendJson(exchange, 200, Map.of("status", "ok", "service", "orders-service"));
         });
 
         // Endpoint de origem de dados de vendas (camada App -> Raw).
-        server.createContext("/orders", exchange -> {
+        registerRoute(server, "/orders", "POST", exchange -> {
             logAccess(exchange);
-            if (!"POST".equals(exchange.getRequestMethod())) {
-                sendJson(exchange, 405, Map.of("error", "method not allowed"));
-                return;
-            }
 
-            Map<String, Object> payload;
-            try {
-                byte[] body = exchange.getRequestBody().readAllBytes();
-                if (body.length == 0) {
-                    payload = new HashMap<>();
-                } else {
-                    payload = MAPPER.readValue(body, Map.class);
-                }
-            } catch (Exception ex) {
-                payload = new HashMap<>();
-            }
+            Map<String, Object> payload = parseJsonBody(exchange);
 
             Map<String, Object> saleEvent = new HashMap<>();
             saleEvent.put("order_id", UUID.randomUUID().toString());
@@ -90,6 +64,7 @@ public class OrdersServiceApplication {
         server.start();
     }
 
+    // Registra um evento de acesso em arquivo raw para auditoria basica.
     private static void logAccess(HttpExchange exchange) {
         try {
             Map<String, Object> event = new HashMap<>();
@@ -104,6 +79,7 @@ public class OrdersServiceApplication {
         }
     }
 
+    // Grava um objeto JSON por linha (JSONL), criando diretorio/arquivo quando necessario.
     private static void appendJsonLine(Path file, Map<String, Object> payload) throws IOException {
         Files.createDirectories(file.getParent());
         String line = MAPPER.writeValueAsString(payload) + "\n";
@@ -111,6 +87,7 @@ public class OrdersServiceApplication {
             Files.exists(file) ? java.nio.file.StandardOpenOption.APPEND : java.nio.file.StandardOpenOption.CREATE);
     }
 
+    // Envia uma copia do evento de venda para o blob storage (Azurite) e informa sucesso/falha.
     private static boolean uploadToAzureBlob(Map<String, Object> saleEvent) {
         try {
             String createdAt = String.valueOf(saleEvent.get("created_at"));
@@ -125,10 +102,10 @@ public class OrdersServiceApplication {
             );
 
             BlobServiceClient client = new BlobServiceClientBuilder()
-                .connectionString(CONNECTION_STRING)
+                .connectionString(CONFIG.azureStorageConnectionString())
                 .buildClient();
 
-            BlobContainerClient containerClient = client.getBlobContainerClient(RAW_CONTAINER);
+            BlobContainerClient containerClient = client.getBlobContainerClient(CONFIG.azureRawContainer());
             if (!containerClient.exists()) {
                 containerClient.create();
             }
@@ -142,6 +119,37 @@ public class OrdersServiceApplication {
         }
     }
 
+    // Registra uma rota com validacao de metodo HTTP e tratamento padrao de erro interno.
+    private static void registerRoute(HttpServer server, String path, String method, ExchangeHandler handler) {
+        server.createContext(path, exchange -> {
+            if (!method.equals(exchange.getRequestMethod())) {
+                sendJson(exchange, 405, Map.of("error", "method not allowed"));
+                return;
+            }
+
+            try {
+                handler.handle(exchange);
+            } catch (Exception ex) {
+                sendJson(exchange, 500, Map.of("error", "internal server error"));
+            }
+        });
+    }
+
+    // Faz parse do corpo JSON da requisicao e retorna mapa vazio quando invalido/ausente.
+    @SuppressWarnings("unchecked")
+    private static Map<String, Object> parseJsonBody(HttpExchange exchange) {
+        try {
+            byte[] body = exchange.getRequestBody().readAllBytes();
+            if (body.length == 0) {
+                return new HashMap<>();
+            }
+            return MAPPER.readValue(body, Map.class);
+        } catch (Exception ex) {
+            return new HashMap<>();
+        }
+    }
+
+    // Serializa um payload para JSON e envia resposta HTTP com status e content-type adequados.
     private static void sendJson(HttpExchange exchange, int statusCode, Map<String, Object> payload) throws IOException {
         byte[] response = MAPPER.writeValueAsBytes(payload);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -151,11 +159,13 @@ public class OrdersServiceApplication {
         }
     }
 
+    // Le variavel de ambiente com fallback para valor padrao.
     private static String getEnv(String key, String fallback) {
         String value = System.getenv(key);
         return value == null || value.isBlank() ? fallback : value;
     }
 
+    // Converte valor generico para double, aplicando valor padrao em caso de erro.
     private static double toDouble(Object value) {
         if (value instanceof Number number) {
             return number.doubleValue();
@@ -164,6 +174,29 @@ public class OrdersServiceApplication {
             return Double.parseDouble(String.valueOf(value));
         } catch (Exception ex) {
             return 100.0;
+        }
+    }
+
+    @FunctionalInterface
+    private interface ExchangeHandler {
+        // Contrato de handler para processar uma troca HTTP.
+        void handle(HttpExchange exchange) throws Exception;
+    }
+
+    private record AppConfig(Path rawRoot, String azureStorageConnectionString, String azureRawContainer) {
+        // Carrega configuracoes do servico a partir de variaveis de ambiente.
+        private static AppConfig load() {
+            return new AppConfig(
+                Paths.get(getEnv("RAW_ROOT", "/data/raw")),
+                getEnv(
+                    "AZURE_STORAGE_CONNECTION_STRING",
+                    "DefaultEndpointsProtocol=http;"
+                        + "AccountName=devstoreaccount1;"
+                        + "AccountKey=Eby8vdM02xNOcqFlqUwJPLlmEtlCDXJ1OUzFT50uSRZ6IFsuFq2UVErCz4I6tq/K1SZFPTOtr/KBHBeksoGMGw==;"
+                        + "BlobEndpoint=http://azurite:10000/devstoreaccount1;"
+                ),
+                getEnv("AZURE_RAW_CONTAINER", "raw")
+            );
         }
     }
 }

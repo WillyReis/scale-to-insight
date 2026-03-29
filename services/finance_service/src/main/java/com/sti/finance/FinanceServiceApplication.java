@@ -21,32 +21,26 @@ import java.util.Map;
 
 public class FinanceServiceApplication {
     private static final ObjectMapper MAPPER = new ObjectMapper();
-    private static final Path WAREHOUSE_DB = Paths.get(getEnv("WAREHOUSE_DB", "/data/warehouse/warehouse.db"));
+    private static final AppConfig CONFIG = AppConfig.load();
 
+    // Inicializa o servidor HTTP e registra endpoints de saude e consulta de KPIs.
     public static void main(String[] args) throws IOException {
         HttpServer server = HttpServer.create(new InetSocketAddress(5002), 0);
 
         // Endpoint de saude para validar disponibilidade do servico.
-        server.createContext("/health", exchange -> {
-            if (!"GET".equals(exchange.getRequestMethod())) {
-                sendJson(exchange, 405, Map.of("error", "method not allowed"));
-                return;
-            }
+        registerRoute(server, "/health", "GET", exchange -> {
             sendJson(exchange, 200, Map.of("status", "ok", "service", "finance-service"));
         });
 
         // Endpoint que expõe o Data Mart para o setor financeiro.
-        server.createContext("/kpis", exchange -> {
-            if (!"GET".equals(exchange.getRequestMethod())) {
-                sendJson(exchange, 405, Map.of("error", "method not allowed"));
-                return;
-            }
+        registerRoute(server, "/kpis", "GET", exchange -> {
             sendJson(exchange, 200, collectKpis());
         });
 
         server.start();
     }
 
+    // Consulta o data mart e monta o payload de resumo e serie diaria de metricas.
     private static Map<String, Object> collectKpis() {
         Map<String, Object> summary = new HashMap<>();
         summary.put("total_sales", 0.0);
@@ -55,11 +49,11 @@ public class FinanceServiceApplication {
 
         List<Map<String, Object>> byDay = new ArrayList<>();
 
-        if (!Files.exists(WAREHOUSE_DB)) {
+        if (!Files.exists(CONFIG.warehouseDb())) {
             return Map.of("summary", summary, "by_day", byDay);
         }
 
-        String dbUrl = "jdbc:sqlite:" + WAREHOUSE_DB;
+        String dbUrl = "jdbc:sqlite:" + CONFIG.warehouseDb();
         try (Connection conn = DriverManager.getConnection(dbUrl); Statement stmt = conn.createStatement()) {
             ResultSet totals = stmt.executeQuery(
                 "SELECT COALESCE(SUM(total_sales), 0), COALESCE(SUM(total_orders), 0), COALESCE(AVG(avg_ticket), 0) " +
@@ -90,6 +84,23 @@ public class FinanceServiceApplication {
         return Map.of("summary", summary, "by_day", byDay);
     }
 
+    // Registra rota com validacao de metodo HTTP e tratamento padrao para falhas inesperadas.
+    private static void registerRoute(HttpServer server, String path, String method, ExchangeHandler handler) {
+        server.createContext(path, exchange -> {
+            if (!method.equals(exchange.getRequestMethod())) {
+                sendJson(exchange, 405, Map.of("error", "method not allowed"));
+                return;
+            }
+
+            try {
+                handler.handle(exchange);
+            } catch (Exception ex) {
+                sendJson(exchange, 500, Map.of("error", "internal server error"));
+            }
+        });
+    }
+
+    // Serializa payload em JSON e envia resposta HTTP com codigo e cabecalho corretos.
     private static void sendJson(HttpExchange exchange, int statusCode, Map<String, Object> payload) throws IOException {
         byte[] response = MAPPER.writeValueAsBytes(payload);
         exchange.getResponseHeaders().set("Content-Type", "application/json");
@@ -99,12 +110,27 @@ public class FinanceServiceApplication {
         }
     }
 
+    // Le variavel de ambiente com valor padrao caso nao esteja definida.
     private static String getEnv(String key, String fallback) {
         String value = System.getenv(key);
         return value == null || value.isBlank() ? fallback : value;
     }
 
+    // Arredonda numero para duas casas decimais para exibicao de indicadores.
     private static double round2(double value) {
         return Math.round(value * 100.0) / 100.0;
+    }
+
+    @FunctionalInterface
+    private interface ExchangeHandler {
+        // Contrato do manipulador de requisicao para a rota.
+        void handle(HttpExchange exchange) throws Exception;
+    }
+
+    private record AppConfig(Path warehouseDb) {
+        // Carrega caminho do banco analitico a partir do ambiente.
+        private static AppConfig load() {
+            return new AppConfig(Paths.get(getEnv("WAREHOUSE_DB", "/data/warehouse/warehouse.db")));
+        }
     }
 }
