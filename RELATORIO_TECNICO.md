@@ -166,3 +166,91 @@ flowchart LR
     DW --> DM[(Data Mart: Sales Aggregator)]
     FI -->|Consulta Dinâmica| DM
 ```
+
+
+## 9. Testes da Solução
+
+A solução foi colocada em um servidor na web (http://137.131.156.129:8080/) e os endpoints foram testados:
+
+1. GET http://137.131.156.129:8080/orders/health
+```
+{"status":"ok","service":"orders-service"}
+```
+
+2. POST http://137.131.156.129:8080/orders/orders
+#### para este teste utilizamos um shellscript: teste_carga.ps1
+```
+# Define o endereço do seu serviço
+$url = "http://137.131.156.129:8080/orders/orders"
+
+# Opções para variar os dados (baseado no seu código Java)
+$metodos = "pix", "credit_card", "debit_card"
+$status_opcoes = "approved", "pending"
+
+Write-Host "Iniciando carga de dados no servidor..." -ForegroundColor Cyan
+
+# Loop para enviar 20 pedidos de teste
+for ($i=1; $i -le 20; $i++) {
+    # Gera valores aleatórios para simular vendas reais
+    $valor = [math]::Round((Get-Random -Minimum 10.0 -Maximum 500.0), 2)
+    $metodo = $metodos[(Get-Random -Maximum $metodos.Count)]
+    $status = $status_opcoes[(Get-Random -Maximum $status_opcoes.Count)]
+
+    # Monta o corpo da requisição (JSON)
+    $body = @{
+        amount = $valor
+        payment_method = $metodo
+        status = $status
+    } | ConvertTo-Json
+
+    # Envia o comando POST
+    try {
+        $response = Invoke-RestMethod -Uri $url -Method Post -Body $body -ContentType "application/json"
+        Write-Host "Pedido ${i} enviado: R$ ${valor} via ${metodo} (Status: ${status})" -ForegroundColor Green
+    }
+    catch {
+        # O erro anterior foi aqui. Usando ${} resolvemos a ambiguidade do caractere ':'
+        Write-Host "Erro ao enviar pedido ${i}: $($_.Exception.Message)" -ForegroundColor Red
+    }
+}
+
+Write-Host "Carga finalizada! Verifique os KPIs agora." -ForegroundColor Yellow
+```
+
+#### resultados:
+```
+Iniciando carga de dados no servidor...
+Pedido 1 enviado: R$ 148.47 via debit_card (Status: pending)
+Pedido 2 enviado: R$ 243.16 via debit_card (Status: pending)
+Pedido 3 enviado: R$ 326.33 via credit_card (Status: pending)
+Pedido 4 enviado: R$ 43.27 via debit_card (Status: approved)
+Pedido 5 enviado: R$ 90.06 via credit_card (Status: approved)
+Pedido 6 enviado: R$ 229.42 via debit_card (Status: pending)
+Pedido 7 enviado: R$ 377.5 via credit_card (Status: approved)
+Pedido 8 enviado: R$ 251.74 via pix (Status: pending)
+Pedido 9 enviado: R$ 83.57 via debit_card (Status: approved)
+Pedido 10 enviado: R$ 173.1 via pix (Status: pending)
+Pedido 11 enviado: R$ 127.79 via credit_card (Status: approved)
+Pedido 12 enviado: R$ 475.92 via pix (Status: pending)
+Pedido 13 enviado: R$ 469.24 via debit_card (Status: pending)
+Pedido 14 enviado: R$ 134.74 via debit_card (Status: pending)
+Pedido 15 enviado: R$ 34.86 via pix (Status: approved)
+Pedido 16 enviado: R$ 387.06 via debit_card (Status: approved)
+Pedido 17 enviado: R$ 114.49 via credit_card (Status: approved)
+Pedido 18 enviado: R$ 44.2 via pix (Status: approved)
+Pedido 19 enviado: R$ 282.16 via debit_card (Status: pending)
+Pedido 20 enviado: R$ 286.56 via debit_card (Status: approved)
+Carga finalizada! Verifique os KPIs agora.
+```
+
+3. GET http://137.131.156.129:8080/finance/health
+```
+{"status":"ok","service":"finance-service"}
+```
+
+4. GET http://137.131.156.129:8080/finance/kpis
+```
+{"summary":{"avg_ticket":187.16,"total_sales":6176.22,"total_orders":33},"by_day":[{"sale_date":"2026-04-02","avg_ticket":187.16,"total_sales":6176.22,"total_orders":33}]}
+```
+
+- Estes endpoint vão ficar disponíveis por tempo limitado.
